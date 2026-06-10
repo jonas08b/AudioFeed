@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AudioFeed</title>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --surface: #141414;
+    --surface2: #1e1e1e;
+    --border: rgba(255,255,255,0.08);
+    --border-hover: rgba(255,255,255,0.15);
+    --text: #f0f0f0;
+    --muted: #888;
+    --accent: #e8f545;
+    --accent-text: #0a0a0a;
+    --tag-bg: rgba(232,245,69,0.1);
+    --tag-text: #e8f545;
+    --card-h: 520px;
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Header */
+  .header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 20px 14px;
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 100;
+    background: var(--bg);
+  }
+  .logo { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; }
+  .logo span { color: var(--accent); }
+  .header-right { display: flex; gap: 10px; align-items: center; }
+  .btn-icon {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 10px; padding: 8px 10px;
+    cursor: pointer; font-size: 16px; transition: border-color 0.2s;
+    display: flex; align-items: center; gap: 6px; font-size: 13px;
+  }
+  .btn-icon:hover { border-color: var(--border-hover); }
+
+  /* Feed filters */
+  .filters {
+    display: flex; gap: 8px; padding: 14px 20px;
+    overflow-x: auto; scrollbar-width: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .filters::-webkit-scrollbar { display: none; }
+  .filter-chip {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--muted); border-radius: 20px; padding: 6px 14px;
+    font-size: 12px; cursor: pointer; white-space: nowrap;
+    transition: all 0.2s; flex-shrink: 0;
+  }
+  .filter-chip.active {
+    background: var(--accent); color: var(--accent-text);
+    border-color: var(--accent); font-weight: 600;
+  }
+
+  /* Main feed */
+  .feed-container { padding: 16px 20px; max-width: 480px; margin: 0 auto; }
+
+  /* Loading */
+  .loading-state {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 16px; padding: 60px 20px;
+    color: var(--muted);
+  }
+  .spinner {
+    width: 32px; height: 32px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-text { font-size: 14px; }
+
+  /* Empty / error state */
+  .empty-state {
+    text-align: center; padding: 60px 20px; color: var(--muted);
+  }
+  .empty-state h3 { color: var(--text); margin-bottom: 8px; font-size: 16px; }
+  .empty-state p { font-size: 14px; line-height: 1.6; }
+  .btn-retry {
+    margin-top: 20px; background: var(--accent); color: var(--accent-text);
+    border: none; border-radius: 10px; padding: 10px 20px;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+
+  /* Card */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 14px;
+    overflow: hidden;
+    transition: border-color 0.2s, transform 0.15s;
+    cursor: pointer;
+    position: relative;
+  }
+  .card:hover { border-color: var(--border-hover); transform: translateY(-1px); }
+  .card:active { transform: scale(0.99); }
+
+  .card-top {
+    padding: 18px 18px 14px;
+  }
+  .card-meta {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .source-badge {
+    background: var(--tag-bg); color: var(--tag-text);
+    border-radius: 6px; padding: 3px 8px; font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .card-time { font-size: 11px; color: var(--muted); }
+
+  .card-question {
+    font-size: 18px; font-weight: 600; line-height: 1.35;
+    letter-spacing: -0.3px; margin-bottom: 14px;
+  }
+
+  .card-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tag {
+    background: var(--surface2); color: var(--muted);
+    border-radius: 6px; padding: 3px 8px; font-size: 11px;
+  }
+
+  /* Article panel */
+  .article-panel {
+    display: none;
+    border-top: 1px solid var(--border);
+    padding: 18px;
+    animation: slideIn 0.25s ease;
+  }
+  .article-panel.open { display: block; }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .article-section { margin-bottom: 18px; }
+  .article-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--accent); font-weight: 700; margin-bottom: 6px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .article-label::after {
+    content: ''; flex: 1; height: 1px; background: var(--tag-bg);
+  }
+  .article-text {
+    font-size: 14px; line-height: 1.7; color: rgba(240,240,240,0.85);
+  }
+  .article-takeaway {
+    background: var(--surface2); border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0; padding: 12px 14px;
+    font-size: 14px; line-height: 1.6; color: var(--text);
+  }
+  .article-footer {
+    display: flex; align-items: center; justify-content: space-between;
+    padding-top: 14px; border-top: 1px solid var(--border); margin-top: 4px;
+  }
+  .source-link { font-size: 12px; color: var(--muted); text-decoration: none; }
+  .source-link:hover { color: var(--accent); }
+
+  /* Toggle btn */
+  .card-toggle {
+    display: flex; align-items: center; justify-content: center;
+    gap: 6px; padding: 11px 18px;
+    border-top: 1px solid var(--border);
+    font-size: 12px; color: var(--muted);
+    transition: color 0.2s, background 0.2s;
+  }
+  .card:hover .card-toggle { color: var(--text); background: var(--surface2); }
+  .toggle-icon { font-size: 14px; transition: transform 0.25s; }
+  .card.expanded .toggle-icon { transform: rotate(180deg); }
+
+  /* Stats bar */
+  .stats-bar {
+    display: flex; gap: 0; padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    justify-content: space-around;
+  }
+  .stat { text-align: center; }
+  .stat-n { font-size: 18px; font-weight: 700; color: var(--accent); }
+  .stat-l { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* Refresh bar */
+  .refresh-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 20px; border-bottom: 1px solid var(--border);
+    font-size: 12px; color: var(--muted);
+  }
+  .refresh-bar button {
+    background: none; border: none; color: var(--accent);
+    cursor: pointer; font-size: 12px; font-weight: 600;
+    padding: 4px 8px;
+  }
+
+  /* Scrollable feed area */
+  .scroll-feed { overflow-y: auto; }
+
+  @media (max-width: 480px) {
+    .header { padding: 14px 16px 12px; }
+    .feed-container { padding: 12px 14px; }
+    .card-question { font-size: 16px; }
+    .stats-bar { padding: 10px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">Audio<span>Feed</span></div>
+  <div class="header-right">
+    <button class="btn-icon" id="btnRefresh" title="Ververs feed">
+      <span id="refreshIcon">↻</span> Ververs
+    </button>
+  </div>
+</div>
+
+<div class="filters" id="filterBar">
+  <button class="filter-chip active" data-filter="all">Alles</button>
+  <button class="filter-chip" data-filter="macro">Macro</button>
+  <button class="filter-chip" data-filter="markten">Markten</button>
+  <button class="filter-chip" data-filter="bedrijven">Bedrijven</button>
+  <button class="filter-chip" data-filter="belgie">België</button>
+  <button class="filter-chip" data-filter="europa">Europa</button>
+</div>
+
+<div id="statsBar" class="stats-bar" style="display:none">
+  <div class="stat"><div class="stat-n" id="statArts">0</div><div class="stat-l">artikels</div></div>
+  <div class="stat"><div class="stat-n" id="statSrc">0</div><div class="stat-l">bronnen</div></div>
+  <div class="stat"><div class="stat-n" id="statNew">0</div><div class="stat-l">nieuw</div></div>
+</div>
+
+<div id="refreshBar" class="refresh-bar" style="display:none">
+  <span id="lastUpdate"></span>
+  <button onclick="startFetch()">↻ Nu vernieuwen</button>
+</div>
+
+<div class="feed-container scroll-feed" id="feedContainer">
+  <div class="loading-state" id="loadingState">
+    <div class="spinner"></div>
+    <div class="loading-text">Feed ophalen…</div>
+  </div>
+  <div id="cardList"></div>
+</div>
+
+<script>
+
+
+const RSS_FEEDS = [
+  { url: 'https://www.tijd.be/rss/ondernemen.xml',        source: 'De Tijd' },
+  { url: 'https://www.tijd.be/rss/politiek_economie.xml', source: 'De Tijd' },
+  { url: 'https://businessam.be/feed',                    source: 'Business AM' }
+];
+const RSS_PROXY = 'https://api.rss2json.com/v1/api.json?rss_url=';
+
+let allCards = [];
+let activeFilter = 'all';
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+function timeAgo(dateStr) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 60) return `${m}m geleden`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}u geleden`;
+  return `${Math.floor(h / 24)}d geleden`;
+}
+
+async function groqCall(systemPrompt, userContent) {
+  const res = await fetch('/api/groq', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ system: systemPrompt, user: userContent })
+  });
+  if (!res.ok) throw new Error(`Proxy ${res.status}`);
+  const d = await res.json();
+  if (d.error) throw new Error(d.error);
+  return d.content;
+}
+
+// ── Step 1: fetch RSS ─────────────────────────────────────────────────────────
+async function fetchFeed(feed) {
+  const res = await fetch(`${RSS_PROXY}${encodeURIComponent(feed.url)}&count=8`);
+  const data = await res.json();
+  if (!data.items) return [];
+  return data.items.slice(0, 8).map(item => ({
+    title: item.title,
+    description: item.description?.replace(/<[^>]+>/g, '').slice(0, 400) || '',
+    link: item.link,
+    pubDate: item.pubDate,
+    source: feed.source
+  }));
+}
+
+// ── Step 2: filter economisch relevant ──────────────────────────────────────
+const FILTER_SYSTEM = `Je bent een economisch-financieel redacteur. 
+Beoordeel of een nieuwsartikel economisch relevant is voor jonge professionals en studenten.
+Reageer ALLEEN met geldig JSON: {"relevant": true, "category": "macro|markten|bedrijven|belgie|europa"} 
+of {"relevant": false}. Geen tekst buiten JSON.`;
+
+async function filterItem(item) {
+  try {
+    const text = `Titel: ${item.title}\nSamenvatting: ${item.description}`;
+    const raw = await groqCall(FILTER_SYSTEM, text);
+    const clean = raw.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(clean);
+    return { ...item, relevant: parsed.relevant, category: parsed.category || 'macro' };
+  } catch { return { ...item, relevant: false }; }
+}
+
+// ── Step 3: genereer kaart-inhoud ────────────────────────────────────────────
+const GEN_SYSTEM = `Je bent een scherpe economische journalist voor jonge professionals (18-30j).
+Genereer ALLEEN geldig JSON in exact dit formaat zonder extra tekst:
+{
+  "vraagzin": "Één prikkelende vraagzin die de essentie raakt (max 15 woorden)",
+  "tags": ["tag1","tag2","tag3"],
+  "inleiding": "2-3 zinnen: directe aanleiding + harde feiten.",
+  "gevolgen_label": "Onmiddellijke Gevolgen voor [relevant onderwerp]",
+  "gevolgen": "Korte paragraaf wat er nu direct gebeurt op macro- of marktniveau. Actieve taal.",
+  "invloed_label": "Invloed op [doelgroep of marktdeel]",
+  "invloed": "Waarom maakt dit uit voor studenten/jonge professionals? Praktische vertaalslag.",
+  "advies": "Concreet, actiegericht advies of take-away. Max 2 zinnen."
+}`;
+
+async function generateCard(item) {
+  try {
+    const text = `Titel: ${item.title}\nBron: ${item.source}\nTekst: ${item.description}`;
+    const raw = await groqCall(GEN_SYSTEM, text);
+    const clean = raw.replace(/```json|```/g, '').trim();
+    return { ...item, card: JSON.parse(clean) };
+  } catch(e) {
+    return { ...item, card: null };
+  }
+}
+
+// ── Render kaarten ────────────────────────────────────────────────────────────
+function renderCard(item, idx) {
+  const c = item.card;
+  if (!c) return '';
+  const tags = (c.tags || []).map(t => `<span class="tag">${t}</span>`).join('');
+  return `
+  <div class="card" id="card-${idx}" data-cat="${item.category || 'macro'}">
+    <div class="card-top" onclick="toggleCard(${idx})">
+      <div class="card-meta">
+        <span class="source-badge">${item.source}</span>
+        <span class="card-time">${timeAgo(item.pubDate)}</span>
+      </div>
+      <div class="card-question">${c.vraagzin}</div>
+      <div class="card-tags">${tags}</div>
+    </div>
+    <div class="article-panel" id="article-${idx}">
+      <div class="article-section">
+        <div class="article-label">Inleiding</div>
+        <div class="article-text">${c.inleiding}</div>
+      </div>
+      <div class="article-section">
+        <div class="article-label">${c.gevolgen_label || 'Onmiddellijke Gevolgen'}</div>
+        <div class="article-text">${c.gevolgen}</div>
+      </div>
+      <div class="article-section">
+        <div class="article-label">${c.invloed_label || 'Invloed op jou'}</div>
+        <div class="article-text">${c.invloed}</div>
+      </div>
+      <div class="article-section">
+        <div class="article-label">Advies</div>
+        <div class="article-takeaway">${c.advies}</div>
+      </div>
+      <div class="article-footer">
+        <a href="${item.link}" target="_blank" class="source-link">↗ Volledig artikel — ${item.source}</a>
+      </div>
+    </div>
+    <div class="card-toggle" onclick="toggleCard(${idx})">
+      <span>Lees meer</span>
+      <span class="toggle-icon">▾</span>
+    </div>
+  </div>`;
+}
+
+function toggleCard(idx) {
+  const card = document.getElementById(`card-${idx}`);
+  const panel = document.getElementById(`article-${idx}`);
+  card.classList.toggle('expanded');
+  panel.classList.toggle('open');
+}
+
+function applyFilter(filter) {
+  activeFilter = filter;
+  document.querySelectorAll('.filter-chip').forEach(c => {
+    c.classList.toggle('active', c.dataset.filter === filter);
+  });
+  const cards = document.querySelectorAll('.card');
+  cards.forEach(card => {
+    const cat = card.dataset.cat;
+    const show = filter === 'all' || cat === filter;
+    card.style.display = show ? 'block' : 'none';
+  });
+}
+
+document.getElementById('filterBar').addEventListener('click', e => {
+  if (e.target.dataset.filter) applyFilter(e.target.dataset.filter);
+});
+
+// ── Main fetch pipeline ───────────────────────────────────────────────────────
+async function startFetch() {
+  const loading = document.getElementById('loadingState');
+  const cardList = document.getElementById('cardList');
+  const statsBar = document.getElementById('statsBar');
+  const refreshBar = document.getElementById('refreshBar');
+  loading.style.display = 'flex';
+  cardList.innerHTML = '';
+  statsBar.style.display = 'none';
+  refreshBar.style.display = 'none';
+  allCards = [];
+
+  try {
+    // 1. Fetch alle RSS feeds parallel
+    loading.querySelector('.loading-text').textContent = 'RSS feeds ophalen…';
+    const feedResults = await Promise.allSettled(RSS_FEEDS.map(fetchFeed));
+    let items = feedResults
+      .filter(r => r.status === 'fulfilled')
+      .flatMap(r => r.value);
+
+    // Dedupliceer op titel
+    const seen = new Set();
+    items = items.filter(item => {
+      const key = item.title.slice(0, 50);
+      if (seen.has(key)) return false;
+      seen.add(key); return true;
+    });
+
+    loading.querySelector('.loading-text').textContent = `${items.length} artikels analyseren…`;
+
+    // 2. Filter economisch relevante artikels (batches van 3)
+    const filtered = [];
+    for (let i = 0; i < items.length; i += 3) {
+      const batch = items.slice(i, i + 3);
+      const results = await Promise.allSettled(batch.map(filterItem));
+      results.forEach(r => { if (r.status === 'fulfilled' && r.value.relevant) filtered.push(r.value); });
+    }
+
+    loading.querySelector('.loading-text').textContent = `${filtered.length} relevante artikels verwerken…`;
+
+    // 3. Genereer kaartinhoud (max 10)
+    const toGen = filtered.slice(0, 10);
+    const generated = [];
+    for (let i = 0; i < toGen.length; i++) {
+      const result = await generateCard(toGen[i]);
+      if (result.card) {
+        generated.push(result);
+        allCards.push(result);
+        // Render incrementeel
+        cardList.innerHTML += renderCard(result, allCards.length - 1);
+      }
+      loading.querySelector('.loading-text').textContent = `Kaart ${i + 1}/${toGen.length} klaar…`;
+    }
+
+    // Stats
+    const sources = new Set(generated.map(c => c.source)).size;
+    document.getElementById('statArts').textContent = generated.length;
+    document.getElementById('statSrc').textContent = sources;
+    document.getElementById('statNew').textContent = generated.filter(c => {
+      const age = Date.now() - new Date(c.pubDate).getTime();
+      return age < 3 * 3600 * 1000;
+    }).length;
+
+    document.getElementById('lastUpdate').textContent =
+      `Bijgewerkt: ${new Date().toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })}`;
+
+    statsBar.style.display = 'flex';
+    refreshBar.style.display = 'flex';
+
+    if (generated.length === 0) {
+      cardList.innerHTML = `<div class="empty-state">
+        <h3>Geen economische artikels gevonden</h3>
+        <p>De feeds bevatten momenteel geen economisch relevante berichten. Probeer het later opnieuw.</p>
+        <button class="btn-retry" onclick="startFetch()">↻ Opnieuw proberen</button>
+      </div>`;
+    }
+
+    applyFilter(activeFilter);
+
+  } catch (err) {
+    cardList.innerHTML = `<div class="empty-state">
+      <h3>Fout bij laden</h3>
+      <p>${err.message}</p>
+      <button class="btn-retry" onclick="startFetch()">↻ Opnieuw proberen</button>
+    </div>`;
+  } finally {
+    loading.style.display = 'none';
+  }
+}
+
+document.getElementById('btnRefresh').addEventListener('click', startFetch);
+
+// Auto-start
+startFetch();
+</script>
+</body>
+</html>

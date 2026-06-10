@@ -415,7 +415,7 @@ document.getElementById('filterBar').addEventListener('click', e => {
 });
 
 // ── Main fetch pipeline ───────────────────────────────────────────────────────
-async function startFetch() {
+async function startFetch(forceRefresh = false) {
   const loading = document.getElementById('loadingState');
   const cardList = document.getElementById('cardList');
   const statsBar = document.getElementById('statsBar');
@@ -427,12 +427,49 @@ async function startFetch() {
   allCards = [];
 
   try {
+    // 0. Check server cache (tenzij force refresh)
+    if (!forceRefresh) {
+      loading.querySelector('.loading-text').textContent = 'Cache controleren…';
+      try {
+        const cacheRes = await fetch('/api/cache');
+        if (cacheRes.ok) {
+          const cached = await cacheRes.json();
+          if (cached.cards && cached.cards.length > 0) {
+            allCards = cached.cards;
+            cardList.innerHTML = cached.cards.map((r, i) => renderCard(r, i)).join('');
+            const sources = new Set(cached.cards.map(c => c.source)).size;
+            document.getElementById('statArts').textContent = cached.cards.length;
+            document.getElementById('statSrc').textContent = sources;
+            document.getElementById('statNew').textContent = cached.cards.filter(c => {
+              const age = Date.now() - new Date(c.pubDate).getTime();
+              return age < 3 * 3600 * 1000;
+            }).length;
+            const age = Math.round((Date.now() - cached.generatedAt) / 60000);
+            document.getElementById('lastUpdate').textContent =
+              `Cache: ${age} min oud — ${new Date(cached.generatedAt).toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })}`;
+            statsBar.style.display = 'flex';
+            refreshBar.style.display = 'flex';
+            applyFilter(activeFilter);
+            loading.style.display = 'none';
+            return;
+          }
+        }
+      } catch(e) { /* cache miss, proceed normally */ }
+    }
+
     // 1. Fetch alle RSS feeds parallel
     loading.querySelector('.loading-text').textContent = 'RSS feeds ophalen…';
     const feedResults = await Promise.allSettled(RSS_FEEDS.map(fetchFeed));
     let items = feedResults
       .filter(r => r.status === 'fulfilled')
       .flatMap(r => r.value);
+
+    // Filter artikels ouder dan 24 uur
+    const now = Date.now();
+    items = items.filter(item => {
+      const age = now - new Date(item.pubDate).getTime();
+      return age < 24 * 3600 * 1000;
+    });
 
     // Dedupliceer op titel
     const seen = new Set();
@@ -467,6 +504,15 @@ async function startFetch() {
       }
       loading.querySelector('.loading-text').textContent = `Kaart ${i + 1}/${toGen.length} klaar…`;
     }
+
+    // Sla op in server cache
+    try {
+      await fetch('/api/cache', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cards: generated, generatedAt: Date.now() })
+      });
+    } catch(e) { /* cache opslaan mislukt, geen probleem */ }
 
     // Stats
     const sources = new Set(generated.map(c => c.source)).size;
@@ -504,7 +550,7 @@ async function startFetch() {
   }
 }
 
-document.getElementById('btnRefresh').addEventListener('click', startFetch);
+document.getElementById('btnRefresh').addEventListener('click', () => startFetch(true));
 
 // Auto-start
 startFetch();

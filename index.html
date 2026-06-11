@@ -294,10 +294,10 @@ async function groqCall(systemPrompt, userContent) {
 
 // ── Step 1: fetch RSS ─────────────────────────────────────────────────────────
 async function fetchFeed(feed) {
-  const res = await fetch(`${RSS_PROXY}${encodeURIComponent(feed.url)}&count=8`);
+  const res = await fetch(`${RSS_PROXY}${encodeURIComponent(feed.url)}&count=20`);
   const data = await res.json();
   if (!data.items) return [];
-  return data.items.slice(0, 8).map(item => ({
+  return data.items.map(item => ({
     title: item.title,
     description: item.description?.replace(/<[^>]+>/g, '').slice(0, 400) || '',
     link: item.link,
@@ -492,7 +492,7 @@ async function startFetch(forceRefresh = false) {
     loading.querySelector('.loading-text').textContent = `${filtered.length} relevante artikels verwerken…`;
 
     // 3. Genereer kaartinhoud (max 10)
-    const toGen = filtered.slice(0, 10);
+    const toGen = filtered;
     const generated = [];
     for (let i = 0; i < toGen.length; i++) {
       const result = await generateCard(toGen[i]);
